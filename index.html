@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; background: #f0f4f8; margin: 0; padding: 20px; color: #222; }
+  h2 { color: #1a56a0; margin-bottom: 4px; }
+  .subtitle { color: #555; font-size: 13px; margin-bottom: 18px; }
+  .formula-box { background: #e8f0fe; border-left: 4px solid #1a56a0; padding: 10px 16px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; }
+  .formula-box code { font-size: 14px; color: #c0392b; }
+
+  table { border-collapse: collapse; width: 100%; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  thead tr { background: #1a56a0; color: #fff; }
+  thead th { padding: 10px 14px; text-align: center; font-size: 13px; }
+  tbody tr:nth-child(even) { background: #f5f8ff; }
+  tbody tr:hover { background: #dce8ff; }
+  td { padding: 9px 14px; text-align: center; font-size: 13px; }
+  td.label { font-weight: 600; color: #1a56a0; }
+  td.raw { color: #333; }
+  td.exp { color: #27ae60; }
+  td.softmax { color: #8e44ad; font-weight: 600; }
+  td.bar-cell { padding: 6px 14px; }
+  .bar { height: 16px; background: linear-gradient(90deg, #8e44ad, #c39bd3); border-radius: 3px; min-width: 2px; }
+
+  tfoot td { background: #f0f4f8; font-weight: 600; font-size: 13px; color: #333; padding: 9px 14px; }
+
+  .controls { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .controls label { font-size: 13px; color: #444; }
+  .controls input[type=range] { width: 120px; accent-color: #1a56a0; }
+  .controls span { font-weight: bold; color: #1a56a0; min-width: 32px; display: inline-block; }
+  button { background: #1a56a0; color: #fff; border: none; padding: 7px 16px; border-radius: 5px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #1446880; background: #163f80; }
+  .note { font-size: 12px; color: #777; margin-top: 14px; }
+  .max-tag { background: #f39c12; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 11px; margin-left: 4px; }
+</style>
+</head>
+<body>
+
+<h2>📊 Softmax Calculation — 10 Classes</h2>
+<p class="subtitle">Edit the raw logit scores below or randomize them to see the softmax probabilities update live.</p>
+
+<div class="formula-box">
+  <strong>Formula:</strong> &nbsp;
+  <code>softmax(zᵢ) = e^zᵢ / Σ e^zⱼ</code>
+  &nbsp;&nbsp;→ Each value becomes a probability between 0 and 1, summing to exactly <strong>1.0</strong>.
+</div>
+
+<div class="controls">
+  <button onclick="randomize()">🎲 Randomize Logits</button>
+  <button onclick="resetDefault()">↺ Reset Default</button>
+  <label>Temperature: <input type="range" id="temp" min="0.1" max="3" step="0.1" value="1" oninput="updateTemp()"> <span id="tempVal">1.0</span></label>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Class</th>
+      <th>Raw Logit (zᵢ)</th>
+      <th>e^zᵢ</th>
+      <th>Softmax P(class)</th>
+      <th>Probability Bar</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+  <tfoot>
+    <tr>
+      <td colspan="2">Σ (Sum)</td>
+      <td id="sumExp"></td>
+      <td id="sumSoftmax"></td>
+      <td></td>
+    </tr>
+  </tfoot>
+</table>
+
+<p class="note">💡 <strong>Temperature</strong> controls sharpness: lower T → one class dominates; higher T → probabilities become more uniform.</p>
+
+<script>
+  const classNames = ['Class 0','Class 1','Class 2','Class 3','Class 4','Class 5','Class 6','Class 7','Class 8','Class 9'];
+  let logits = [2.1, 0.5, -1.2, 3.4, 0.8, -0.3, 1.6, 2.9, -0.7, 1.1];
+  let temp = 1.0;
+
+  function softmax(z, t) {
+    const scaled = z.map(v => v / t);
+    const max = Math.max(...scaled); // numerical stability
+    const exps = scaled.map(v => Math.exp(v - max));
+    const sum = exps.reduce((a, b) => a + b, 0);
+    return { exps: exps.map(e => e * Math.exp(max - 0)), probs: exps.map(e => e / sum), sum };
+  }
+
+  function render() {
+    const { exps, probs, sum } = softmax(logits, temp);
+    // recompute real exps for display
+    const realExps = logits.map(v => Math.exp(v / temp));
+    const realSum = realExps.reduce((a,b)=>a+b,0);
+    const realProbs = realExps.map(e => e / realSum);
+
+    const maxIdx = realProbs.indexOf(Math.max(...realProbs));
+    const body = document.getElementById('tableBody');
+    body.innerHTML = '';
+
+    realProbs.forEach((p, i) => {
+      const barW = Math.round(p * 300);
+      const isMax = i === maxIdx;
+      body.innerHTML += `
+        <tr>
+          <td class="label">${classNames[i]}${isMax ? '<span class="max-tag">MAX</span>' : ''}</td>
+          <td class="raw">
+            <input type="number" value="${logits[i].toFixed(2)}" step="0.1"
+              style="width:70px;text-align:center;border:1px solid #ccc;border-radius:4px;padding:3px 5px;font-size:13px;"
+              onchange="updateLogit(${i}, this.value)">
+          </td>
+          <td class="exp">${realExps[i].toFixed(4)}</td>
+          <td class="softmax">${(p * 100).toFixed(2)}%</td>
+          <td class="bar-cell"><div class="bar" style="width:${barW}px"></div></td>
+        </tr>`;
+    });
+
+    document.getElementById('sumExp').textContent = realSum.toFixed(4);
+    document.getElementById('sumSoftmax').textContent = '100.00%';
+  }
+
+  function updateLogit(i, val) {
+    logits[i] = parseFloat(val) || 0;
+    render();
+  }
+
+  function randomize() {
+    logits = Array.from({length:10}, () => +(Math.random() * 6 - 2).toFixed(2));
+    render();
+  }
+
+  function resetDefault() {
+    logits = [2.1, 0.5, -1.2, 3.4, 0.8, -0.3, 1.6, 2.9, -0.7, 1.1];
+    document.getElementById('temp').value = 1;
+    temp = 1.0;
+    document.getElementById('tempVal').textContent = '1.0';
+    render();
+  }
+
+  function updateTemp() {
+    temp = parseFloat(document.getElementById('temp').value);
+    document.getElementById('tempVal').textContent = temp.toFixed(1);
+    render();
+  }
+
+  render();
+</script>
+</body>
+</html>
